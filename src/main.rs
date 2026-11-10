@@ -26,6 +26,7 @@ struct App {
     actions: Vec<Action>,
     mode: Mode,
     current_file: String,
+    last_num: Option<u8>,
     last_key: Option<KeyCode>,
 }
 
@@ -60,12 +61,13 @@ impl App {
             actions: vec![],
             mode: Mode::Command,
             current_file: file,
+            last_num: None,
             last_key: None,
         };
 
         app.switch_mode(Mode::Command).unwrap();
         let text = app.load_file();
-        app.text = Rope::from_str(&text.unwrap());
+        app.text = Rope::from_str(&text);
 
         app
     }
@@ -91,26 +93,56 @@ impl App {
                         _ => Action::None,
                     })
                 } else if matches!(self.mode, Mode::Command) {
-                    let mut amount: isize = 1;
-                    if let Some(KeyCode::Char(c)) = self.last_key {
-                        if matches!(c, '0'..='9') {
-                            amount = c.to_digit(10).unwrap() as isize;
-                        }
+                    let mut amount = 1;
+                    if let Some(n) = self.last_num {
+                        amount = n as isize;
                     }
 
                     self.handle_action( match key.code {
                         KeyCode::Char('i') => Action::SetMode(Mode::Insert),
                         KeyCode::Char('q') => return Ok(()),
                         KeyCode::Char('s') => Action::SaveCurrent,
-                        KeyCode::Char('j') => Action::MoveCursor(Unit::Line, -amount),
-                        KeyCode::Char('k') => Action::MoveCursor(Unit::Line, amount),
-                        KeyCode::Char('h') => Action::MoveCursor(Unit::Char, -amount),
-                        KeyCode::Char('l') => Action::MoveCursor(Unit::Char, amount),
+                        KeyCode::Char('j') => {
+                            let unit = Unit::Line;
+                            let amount = -amount;
+                            match self.last_key {
+                                Some(KeyCode::Char('d')) => Action::Delete(unit, amount),
+                                _ => Action::MoveCursor(unit, amount),
+                            }
+                        },
+                        KeyCode::Char('k') => {
+                            let unit = Unit::Line;
+                            match self.last_key {
+                                Some(KeyCode::Char('d')) => Action::Delete(unit, amount),
+                                _ => Action::MoveCursor(unit, amount),
+                            }
+                        },
+                        KeyCode::Char('h') => {
+                            let unit = Unit::Char;
+                            let amount = -amount;
+                            match self.last_key {
+                                Some(KeyCode::Char('d')) => Action::Delete(unit, amount),
+                                _ => Action::MoveCursor(unit, amount),
+                            }
+                        },
+                        KeyCode::Char('l') => {
+                            let unit = Unit::Char;
+                            match self.last_key {
+                                Some(KeyCode::Char('d')) => Action::Delete(unit, amount),
+                                _ => Action::MoveCursor(unit, amount),
+                            }
+                        },
                         _ => Action::None,
                     })
                 }
 
-                self.last_key = Some(key.code);
+                if let KeyCode::Char(c) = key.code {
+                    if matches!(c, '0'..='9') {
+                        self.last_num = Some(c.to_digit(10).unwrap()as u8);
+                    } else {
+                        self.last_key = Some(key.code);
+                    }
+                }
             }
         }
     }
@@ -203,8 +235,8 @@ impl App {
         std::fs::write(self.current_file.clone(), self.text.to_string()).unwrap();
     }
 
-    fn load_file(&self) -> Option<String> {
-        std::fs::read_to_string(self.current_file.clone()).ok()
+    fn load_file(&self) -> String {
+        std::fs::read_to_string(self.current_file.clone()).unwrap_or_default()
     }
 }
 
