@@ -26,6 +26,7 @@ struct App {
     actions: Vec<Action>,
     mode: Mode,
     current_file: String,
+    last_key: Option<KeyCode>,
 }
 
 #[derive(Clone, PartialEq)]
@@ -59,6 +60,7 @@ impl App {
             actions: vec![],
             mode: Mode::Command,
             current_file: file,
+            last_key: None,
         };
 
         app.switch_mode(Mode::Command).unwrap();
@@ -71,7 +73,7 @@ impl App {
     fn run(mut self, terminal: &mut DefaultTerminal) -> color_eyre::Result<()> {
         loop {
             terminal.draw(|frame| self.render(frame))?;
-
+            
             if let Event::Key(key) = event::read()? {
                 if key.kind != KeyEventKind::Press { continue; }
                 
@@ -89,13 +91,26 @@ impl App {
                         _ => Action::None,
                     })
                 } else if matches!(self.mode, Mode::Command) {
+                    let mut amount: isize = 1;
+                    if let Some(KeyCode::Char(c)) = self.last_key {
+                        if matches!(c, '0'..='9') {
+                            amount = c.to_digit(10).unwrap() as isize;
+                        }
+                    }
+
                     self.handle_action( match key.code {
                         KeyCode::Char('i') => Action::SetMode(Mode::Insert),
                         KeyCode::Char('q') => return Ok(()),
                         KeyCode::Char('s') => Action::SaveCurrent,
+                        KeyCode::Char('j') => Action::MoveCursor(Unit::Line, -amount),
+                        KeyCode::Char('k') => Action::MoveCursor(Unit::Line, amount),
+                        KeyCode::Char('h') => Action::MoveCursor(Unit::Char, -amount),
+                        KeyCode::Char('l') => Action::MoveCursor(Unit::Char, amount),
                         _ => Action::None,
                     })
                 }
+
+                self.last_key = Some(key.code);
             }
         }
     }
@@ -106,7 +121,7 @@ impl App {
             Constraint::Length(1),
         ]).areas(frame.area());
 
-        let block = Block::bordered().title("text buffer");
+        let block = Block::bordered().title("Logos text editor");
         let inner = block.inner(main);
 
         frame.render_widget(
